@@ -5,12 +5,12 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
-crossbeam = "0.8"
 bitfield = "0.19"
-hexdump = "0.1"
+crossbeam = "0.8"
 env_logger = "0.11"
+futures = "0.3"
+hexdump = "0.1"
 log = "0.4"
 nusb = { version = "0.2.0-beta.2", features = ["tokio"] }
 pipewire = "0.8"
-futures = "0.3"
 tokio = { version = "1.46", features = ["io-util", "macros", "rt"] }
