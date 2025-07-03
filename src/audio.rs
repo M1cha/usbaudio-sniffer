@@ -19,7 +19,7 @@ pub fn run(
     let properties = pipewire::properties::properties! {
         *pipewire::keys::NODE_VIRTUAL => "true",
         *pipewire::keys::MEDIA_CLASS => "Audio/Source",
-        *pipewire::keys::NODE_NAME => "audio source",
+        *pipewire::keys::NODE_NAME => "USB Audio Sniffer",
     };
     let stream = pipewire::stream::Stream::new(&core, "usb-sniffer", properties)?;
 
