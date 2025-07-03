@@ -2,6 +2,7 @@ use pipewire::spa;
 
 pub const DEFAULT_RATE: u32 = 48000;
 pub const DEFAULT_CHANNELS: u32 = 2;
+pub const DEFAULT_FORMAT: spa::param::audio::AudioFormat = spa::param::audio::AudioFormat::S16LE;
 pub const CHAN_SIZE: usize = std::mem::size_of::<i16>();
 
 struct UserData {
@@ -73,7 +74,7 @@ pub fn run(
         .register()?;
 
     let mut audio_info = spa::param::audio::AudioInfoRaw::new();
-    audio_info.set_format(spa::param::audio::AudioFormat::S16LE);
+    audio_info.set_format(DEFAULT_FORMAT);
     audio_info.set_rate(DEFAULT_RATE);
     audio_info.set_channels(DEFAULT_CHANNELS);
 
