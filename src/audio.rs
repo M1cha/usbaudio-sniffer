@@ -36,20 +36,31 @@ pub fn run(
                 let datas = buffer.datas_mut();
                 let stride = CHAN_SIZE * DEFAULT_CHANNELS as usize;
                 let data = &mut datas[0];
-                let n_frames = if let Some(slice) = data.data() {
-                    if let Ok(frame) = userdata.ready_buffers_receiver.try_recv() {
-                        let num_frames_pipewire = slice.len() / stride;
-                        let num_frames_queue = frame.slice().len() / stride;
-                        let num_frames_common = num_frames_queue.min(num_frames_pipewire);
+                let n_frames = if let Some(mut slice) = data.data() {
+                    let mut total_frames = 0;
 
-                        slice[0..num_frames_common * stride]
-                            .copy_from_slice(&frame.slice()[0..num_frames_common * stride]);
+                    while slice.len() > crate::sniffer::MAX_DATA_SIZE {
+                        if let Ok(frame) = userdata.ready_buffers_receiver.try_recv() {
+                            let num_frames_pipewire = slice.len() / stride;
+                            let num_frames_buffer = frame.slice().len() / stride;
+                            let num_frames_common = num_frames_buffer.min(num_frames_pipewire);
 
-                        userdata.unused_buffers_sender.send(frame).unwrap();
-                        num_frames_common
-                    } else {
-                        0
+                            if num_frames_common < num_frames_buffer {
+                                log::warn!("BUG: pipewire buffer is to small, partial drop");
+                            }
+
+                            let slice_len = num_frames_common * stride;
+                            slice[0..slice_len].copy_from_slice(&frame.slice()[0..slice_len]);
+
+                            userdata.unused_buffers_sender.send(frame).unwrap();
+                            total_frames += num_frames_common;
+                            slice = &mut slice[slice_len..];
+                        } else {
+                            break;
+                        }
                     }
+
+                    total_frames
                 } else {
                     0
                 };
