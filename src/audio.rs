@@ -1,16 +1,18 @@
 use pipewire::spa;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 
 pub const DEFAULT_RATE: u32 = 48000;
 pub const DEFAULT_CHANNELS: u32 = 2;
 pub const CHAN_SIZE: usize = std::mem::size_of::<i16>();
 
 struct UserData {
-    queue: Arc<Mutex<VecDeque<u8>>>,
+    unused_buffers_sender: crossbeam::channel::Sender<Box<crate::AudioFrame>>,
+    ready_buffers_receiver: crossbeam::channel::Receiver<Box<crate::AudioFrame>>,
 }
 
-pub fn run(queue: Arc<Mutex<VecDeque<u8>>>) -> anyhow::Result<()> {
+pub fn run(
+    unused_buffers_sender: crossbeam::channel::Sender<Box<crate::AudioFrame>>,
+    ready_buffers_receiver: crossbeam::channel::Receiver<Box<crate::AudioFrame>>,
+) -> anyhow::Result<()> {
     let mainloop = pipewire::main_loop::MainLoop::new(None)?;
     let context = pipewire::context::Context::new(&mainloop)?;
     let core = context.connect(None)?;
@@ -21,7 +23,10 @@ pub fn run(queue: Arc<Mutex<VecDeque<u8>>>) -> anyhow::Result<()> {
     };
     let stream = pipewire::stream::Stream::new(&core, "usb-sniffer", properties)?;
 
-    let data = UserData { queue };
+    let data = UserData {
+        unused_buffers_sender,
+        ready_buffers_receiver,
+    };
 
     let _listener = stream
         .add_local_listener_with_user_data(data)
@@ -32,24 +37,19 @@ pub fn run(queue: Arc<Mutex<VecDeque<u8>>>) -> anyhow::Result<()> {
                 let stride = CHAN_SIZE * DEFAULT_CHANNELS as usize;
                 let data = &mut datas[0];
                 let n_frames = if let Some(slice) = data.data() {
-                    let num_frames_pipewire = slice.len() / stride;
-                    let mut queue = userdata.queue.lock().unwrap();
-                    let num_frames_queue = queue.len() / stride;
-                    let num_frames_common = num_frames_queue.min(num_frames_pipewire);
+                    if let Ok(frame) = userdata.ready_buffers_receiver.try_recv() {
+                        let num_frames_pipewire = slice.len() / stride;
+                        let num_frames_queue = frame.slice().len() / stride;
+                        let num_frames_common = num_frames_queue.min(num_frames_pipewire);
 
-                    for sample_id in 0..num_frames_common {
-                        let slice = &mut slice[(num_frames_common - 1 - sample_id) * stride..];
-                        for byte_id in 0..stride {
-                            slice[stride - 1 - byte_id] = queue.pop_back().unwrap();
-                        }
+                        slice[0..num_frames_common * stride]
+                            .copy_from_slice(&frame.slice()[0..num_frames_common * stride]);
+
+                        userdata.unused_buffers_sender.send(frame).unwrap();
+                        num_frames_common
+                    } else {
+                        0
                     }
-
-                    if !queue.is_empty() {
-                        log::warn!("DROP {} samples", queue.len());
-                        queue.clear();
-                    }
-
-                    num_frames_common
                 } else {
                     0
                 };
