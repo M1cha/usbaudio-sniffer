@@ -2,6 +2,8 @@ mod audio;
 mod sniffer;
 
 use anyhow::Context as _;
+use clap::Parser as _;
+use pipewire::spa;
 use sniffer::Sniffer;
 use tokio::io::AsyncReadExt as _;
 
@@ -75,9 +77,104 @@ impl AudioReceiver {
     }
 }
 
+fn parse_format(format: &str) -> Result<spa::param::audio::AudioFormat, std::io::Error> {
+    Ok(match format {
+        "S8" => spa::param::audio::AudioFormat::S8,
+        "U8" => spa::param::audio::AudioFormat::U8,
+        "S16LE" => spa::param::audio::AudioFormat::S16LE,
+        "S16BE" => spa::param::audio::AudioFormat::S16BE,
+        "U16LE" => spa::param::audio::AudioFormat::U16LE,
+        "U16BE" => spa::param::audio::AudioFormat::U16BE,
+        "S24_32LE" => spa::param::audio::AudioFormat::S24_32LE,
+        "S24_32BE" => spa::param::audio::AudioFormat::S24_32BE,
+        "U24_32LE" => spa::param::audio::AudioFormat::U24_32LE,
+        "U24_32BE" => spa::param::audio::AudioFormat::U24_32BE,
+        "S32LE" => spa::param::audio::AudioFormat::S32LE,
+        "S32BE" => spa::param::audio::AudioFormat::S32BE,
+        "U32LE" => spa::param::audio::AudioFormat::U32LE,
+        "U32BE" => spa::param::audio::AudioFormat::U32BE,
+        "S24LE" => spa::param::audio::AudioFormat::S24LE,
+        "S24BE" => spa::param::audio::AudioFormat::S24BE,
+        "U24LE" => spa::param::audio::AudioFormat::U24LE,
+        "U24BE" => spa::param::audio::AudioFormat::U24BE,
+        "S20LE" => spa::param::audio::AudioFormat::S20LE,
+        "S20BE" => spa::param::audio::AudioFormat::S20BE,
+        "U20LE" => spa::param::audio::AudioFormat::U20LE,
+        "U20BE" => spa::param::audio::AudioFormat::U20BE,
+        "S18LE" => spa::param::audio::AudioFormat::S18LE,
+        "S18BE" => spa::param::audio::AudioFormat::S18BE,
+        "U18LE" => spa::param::audio::AudioFormat::U18LE,
+        "U18BE" => spa::param::audio::AudioFormat::U18BE,
+        "F32LE" => spa::param::audio::AudioFormat::F32LE,
+        "F32BE" => spa::param::audio::AudioFormat::F32BE,
+        "F64LE" => spa::param::audio::AudioFormat::F64LE,
+        "F64BE" => spa::param::audio::AudioFormat::F64BE,
+        _ => {
+            return Err(std::io::Error::other("invalid audio format"));
+        }
+    })
+}
+
+fn parse_channel(channel: &str) -> Result<spa::sys::spa_audio_channel, std::io::Error> {
+    Ok(match channel {
+        "FL" => spa::sys::SPA_AUDIO_CHANNEL_FL,
+        "FR" => spa::sys::SPA_AUDIO_CHANNEL_FR,
+        "FC" => spa::sys::SPA_AUDIO_CHANNEL_FC,
+        "LFE" => spa::sys::SPA_AUDIO_CHANNEL_LFE,
+        "SL" => spa::sys::SPA_AUDIO_CHANNEL_SL,
+        "SR" => spa::sys::SPA_AUDIO_CHANNEL_SR,
+        "FLC" => spa::sys::SPA_AUDIO_CHANNEL_FLC,
+        "FRC" => spa::sys::SPA_AUDIO_CHANNEL_FRC,
+        "RC" => spa::sys::SPA_AUDIO_CHANNEL_RC,
+        "RL" => spa::sys::SPA_AUDIO_CHANNEL_RL,
+        "RR" => spa::sys::SPA_AUDIO_CHANNEL_RR,
+        "TC" => spa::sys::SPA_AUDIO_CHANNEL_TC,
+        "TFL" => spa::sys::SPA_AUDIO_CHANNEL_TFL,
+        "TFC" => spa::sys::SPA_AUDIO_CHANNEL_TFC,
+        "TFR" => spa::sys::SPA_AUDIO_CHANNEL_TFR,
+        "TRL" => spa::sys::SPA_AUDIO_CHANNEL_TRL,
+        "TRC" => spa::sys::SPA_AUDIO_CHANNEL_TRC,
+        "TRR" => spa::sys::SPA_AUDIO_CHANNEL_TRR,
+        "RLC" => spa::sys::SPA_AUDIO_CHANNEL_RLC,
+        "RRC" => spa::sys::SPA_AUDIO_CHANNEL_RRC,
+        "FLW" => spa::sys::SPA_AUDIO_CHANNEL_FLW,
+        "FRW" => spa::sys::SPA_AUDIO_CHANNEL_FRW,
+        "LFE2" => spa::sys::SPA_AUDIO_CHANNEL_LFE2,
+        "FLH" => spa::sys::SPA_AUDIO_CHANNEL_FLH,
+        "FCH" => spa::sys::SPA_AUDIO_CHANNEL_FCH,
+        "FRH" => spa::sys::SPA_AUDIO_CHANNEL_FRH,
+        "TFLC" => spa::sys::SPA_AUDIO_CHANNEL_TFLC,
+        "TFRC" => spa::sys::SPA_AUDIO_CHANNEL_TFRC,
+        "TSL" => spa::sys::SPA_AUDIO_CHANNEL_TSL,
+        "TSR" => spa::sys::SPA_AUDIO_CHANNEL_TSR,
+        "LLFE" => spa::sys::SPA_AUDIO_CHANNEL_LLFE,
+        "RLFE" => spa::sys::SPA_AUDIO_CHANNEL_RLFE,
+        "BC" => spa::sys::SPA_AUDIO_CHANNEL_BC,
+        "BLC" => spa::sys::SPA_AUDIO_CHANNEL_BLC,
+        "BRC" => spa::sys::SPA_AUDIO_CHANNEL_BRC,
+        _ => {
+            return Err(std::io::Error::other("invalid audio channel"));
+        }
+    })
+}
+
+#[derive(Debug, clap::Parser)]
+#[command(version, about, long_about = None)]
+pub struct Cli {
+    #[arg(short, long)]
+    rate: u32,
+    #[arg(short, long, value_parser = parse_format)]
+    format: spa::param::audio::AudioFormat,
+    #[arg(short, long, value_delimiter = ',', value_parser = parse_channel)]
+    channels: Vec<spa::sys::spa_audio_channel>,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     env_logger::builder().format_timestamp_millis().init();
+    let cli = Cli::parse();
+    log::debug!("{cli:#?}");
+
     let (unused_buffers_sender, unused_buffers_receiver) = crossbeam::channel::unbounded();
     let (ready_buffers_sender, ready_buffers_receiver) = crossbeam::channel::unbounded();
 
@@ -91,6 +188,7 @@ async fn main() -> anyhow::Result<()> {
     let ready_buffers_receiver2 = ready_buffers_receiver.clone();
     std::thread::spawn(move || {
         audio::run(
+            &cli,
             unused_buffers_sender2.clone(),
             ready_buffers_receiver2.clone(),
         )
